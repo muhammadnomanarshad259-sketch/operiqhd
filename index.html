@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>OperiqHD</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-8">
+
+    <div class="max-w-2xl mx-auto">
+        <h1 class="text-3xl font-bold text-center mb-2">OperiqHD</h1>
+        <p class="text-center text-gray-500 mb-8">GovCon Opportunity Review</p>
+
+        <!-- Upload -->
+        <div class="bg-white p-6 rounded shadow mb-6">
+            <p class="text-gray-600 mb-3 font-semibold">Solicitation PDF upload karo</p>
+            <input type="file" id="fileInput" accept=".pdf" class="block w-full text-sm text-gray-500 mb-3"/>
+            <button onclick="uploadFile()" class="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700 w-full">
+                Upload karo
+            </button>
+            <div id="result" class="text-center font-semibold mt-4"></div>
+        </div>
+
+        <!-- Info Table -->
+        <div id="infoSection" class="bg-white p-6 rounded shadow mb-6 hidden">
+            <h2 class="text-xl font-bold mb-4">📋 Opportunity Details</h2>
+            <table class="w-full text-sm">
+                <tbody id="infoTable"></tbody>
+            </table>
+        </div>
+
+        <!-- Gap Analysis -->
+        <div id="gapSection" class="mb-6 hidden">
+            <h2 class="text-xl font-bold mb-4">⚠️ Gap Analysis</h2>
+            <div id="gapList"></div>
+        </div>
+
+        <!-- Decision Panel -->
+        <div id="decisionSection" class="bg-white p-6 rounded shadow mb-6 hidden">
+            <h2 class="text-xl font-bold mb-2">🏛️ Go / No-Go Decision</h2>
+            <p class="text-sm text-gray-500 mb-4">
+                Recommendation: <span class="font-bold text-yellow-600">HOLD</span>
+                — Gaps resolve karo pehle
+            </p>
+            <textarea id="reasonInput" rows="3"
+                placeholder="Decision ki wajah likho..."
+                class="w-full border rounded p-3 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-300"></textarea>
+            <div class="flex gap-3">
+                <button onclick="saveDecision('HOLD')"
+                    class="flex-1 bg-yellow-500 hover:bg-yellow-600 text-white py-2 rounded font-semibold">
+                    ⏸ HOLD
+                </button>
+                <button onclick="saveDecision('PURSUE')"
+                    class="flex-1 bg-green-600 hover:bg-green-700 text-white py-2 rounded font-semibold">
+                    ✅ PURSUE
+                </button>
+                <button onclick="saveDecision('DECLINE')"
+                    class="flex-1 bg-red-600 hover:bg-red-700 text-white py-2 rounded font-semibold">
+                    ❌ DECLINE
+                </button>
+            </div>
+            <div id="decisionResult" class="mt-4 text-center font-semibold"></div>
+        </div>
+
+        <!-- History -->
+        <div id="historySection" class="bg-white p-6 rounded shadow hidden">
+            <h2 class="text-xl font-bold mb-4">📜 Decision History</h2>
+            <div id="historyList"></div>
+        </div>
+
+    </div>
+
+<script>
+function uploadFile() {
+    const fileInput = document.getElementById("fileInput");
+    const result = document.getElementById("result");
+
+    if (!fileInput.files[0]) {
+        result.innerText = "Pehle file select karo!";
+        result.className = "text-red-500 text-center font-semibold mt-4";
+        return;
+    }
+
+    result.innerText = "Upload ho raha hai...";
+    result.className = "text-gray-500 text-center font-semibold mt-4";
+
+    const formData = new FormData();
+    formData.append("file", fileInput.files[0]);
+
+    fetch("http://127.0.0.1:8000/upload", {
+        method: "POST",
+        body: formData
+    })
+    .then(res => res.json())
+    .then(data => {
+        result.innerText = "✅ " + data.message;
+        result.className = "text-green-600 text-center font-semibold mt-4";
+
+        // Info table
+        if (data.info) {
+            document.getElementById("infoSection").classList.remove("hidden");
+            const labels = {
+                contract_number: "Contract Number",
+                deadline: "Deadline",
+                naics: "NAICS Code",
+                agency: "Agency",
+                company: "Company"
+            };
+            let rows = "";
+            for (const key in data.info) {
+                const val = data.info[key];
+                const color = val === "Nahi mila" ? "text-red-500" : "text-green-700";
+                rows += `<tr class="border-b">
+                    <td class="py-2 font-semibold text-gray-600 w-40">${labels[key]}</td>
+                    <td class="py-2 ${color}">${val}</td>
+                </tr>`;
+            }
+            document.getElementById("infoTable").innerHTML = rows;
+        }
+
+        // Gaps
+        if (data.gaps && data.gaps.length > 0) {
+            document.getElementById("gapSection").classList.remove("hidden");
+            let gapHTML = "";
+            data.gaps.forEach(gap => {
+                const colors = {
+                    critical: "border-red-500 bg-red-50",
+                    high: "border-orange-400 bg-orange-50",
+                    medium: "border-yellow-400 bg-yellow-50"
+                };
+                const badges = {
+                    critical: "bg-red-500 text-white",
+                    high: "bg-orange-400 text-white",
+                    medium: "bg-yellow-400 text-gray-800"
+                };
+                gapHTML += `<div class="border-l-4 ${colors[gap.severity]} p-4 rounded mb-3">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-sm font-bold px-2 py-0.5 rounded ${badges[gap.severity]}">${gap.severity.toUpperCase()}</span>
+                        <span class="font-semibold">${gap.title}</span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-1">${gap.detail}</p>
+                    <p class="text-xs text-gray-400">Owner: ${gap.owner}</p>
+                </div>`;
+            });
+            document.getElementById("gapList").innerHTML = gapHTML;
+        }
+
+        // Decision panel dikhao
+        document.getElementById("decisionSection").classList.remove("hidden");
+        loadHistory();
+    })
+    .catch(() => {
+        result.innerText = "❌ Upload fail hua!";
+        result.className = "text-red-500 text-center font-semibold mt-4";
+    });
+}
+
+function saveDecision(type) {
+    const reason = document.getElementById("reasonInput").value;
+    if (!reason.trim()) {
+        document.getElementById("decisionResult").innerText = "Pehle wajah likho!";
+        document.getElementById("decisionResult").className = "mt-4 text-center text-red-500 font-semibold";
+        return;
+    }
+    fetch("http://127.0.0.1:8000/decision", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({decision: type, reason: reason})
+    })
+    .then(res => res.json())
+    .then(() => {
+        const colors = {
+            HOLD: "text-yellow-600",
+            PURSUE: "text-green-600",
+            DECLINE: "text-red-600"
+        };
+        document.getElementById("decisionResult").innerText = "✅ Decision record ho gaya: " + type;
+        document.getElementById("decisionResult").className = "mt-4 text-center font-semibold " + colors[type];
+        document.getElementById("reasonInput").value = "";
+        loadHistory();
+    });
+}
+
+function loadHistory() {
+    fetch("http://127.0.0.1:8000/decisions")
+    .then(res => res.json())
+    .then(data => {
+        if (data.decisions.length === 0) return;
+        document.getElementById("historySection").classList.remove("hidden");
+        let html = "";
+        [...data.decisions].reverse().forEach(d => {
+            const colors = {
+                HOLD: "text-yellow-600",
+                PURSUE: "text-green-600",
+                DECLINE: "text-red-600"
+            };
+            html += `<div class="border-b py-3">
+                <div class="flex justify-between">
+                    <span class="font-bold ${colors[d.decision]}">${d.decision}</span>
+                    <span class="text-xs text-gray-400">${d.timestamp}</span>
+                </div>
+                <p class="text-sm text-gray-600 mt-1">${d.reason}</p>
+            </div>`;
+        });
+        document.getElementById("historyList").innerHTML = html;
+    });
+}
+</script>
+
+</body>
+</html>
